@@ -1,0 +1,22 @@
+# Render Blueprint. In Render: New > Blueprint, point it at this repo. Render reads this
+# file and provisions the service. (Root Directory = repo root, since this file is here.)
+services:
+  - type: web
+    name: stitch-service
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      # Flip to "1" to deploy the complete reference instead of your stub. Leave unset (your
+      # code) once you've implemented app/routers/jobs.py.
+      - key: USE_REFERENCE
+        value: "1"
+      - key: STITCH_DELAY_SECONDS
+        value: "0"
+      - key: CORS_ALLOW_ORIGINS
+        value: "*"
