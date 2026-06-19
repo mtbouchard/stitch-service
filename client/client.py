@@ -1,9 +1,9 @@
 """
-Stitch-service client - the full upload -> submit -> poll -> download flow. (This is the
-part you asked me to implement; it mirrors the style of the interview's client stub.)
+Stitch-service client - upload two images, then one /stitch call that returns the image
+directly (the interview's synchronous mechanism; the server awaits an external subprocess).
 
 Local:
-    uv run uvicorn app.main:app --reload
+    USE_REFERENCE=1 uv run uvicorn app.main:app --reload
     SERVER_URL=http://127.0.0.1:8000 python client/client.py
 
 Deployed:
@@ -11,7 +11,6 @@ Deployed:
 """
 import os
 import sys
-import time
 
 import httpx
 
@@ -19,7 +18,6 @@ BASE_URL = os.environ.get("SERVER_URL", "http://127.0.0.1:8000")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SAMPLE_DIR = os.path.join(BASE_DIR, "sample_images")
 OUTPUT_FILE = os.path.join(BASE_DIR, "stitched_output.jpg")
-POLL_TIMEOUT_S = 120
 
 
 def upload_image(client: httpx.Client, path: str) -> str:
@@ -34,45 +32,26 @@ def upload_image(client: httpx.Client, path: str) -> str:
 
 def main() -> int:
     print(f"Target server: {BASE_URL}")
-    with httpx.Client(base_url=BASE_URL, timeout=60.0) as client:
+    # Generous timeout: the single request blocks for the whole compute (that's the point).
+    with httpx.Client(base_url=BASE_URL, timeout=120.0) as client:
         print("STEP 1: upload images")
         try:
-            ids = [
-                upload_image(client, os.path.join(SAMPLE_DIR, "s1.jpg")),
-                upload_image(client, os.path.join(SAMPLE_DIR, "s2.jpg")),
-            ]
+            id1 = upload_image(client, os.path.join(SAMPLE_DIR, "s1.jpg"))
+            id2 = upload_image(client, os.path.join(SAMPLE_DIR, "s2.jpg"))
         except httpx.ConnectError:
             print(f"  Could not connect to {BASE_URL}. Is the server running?")
             return 1
 
-        print("STEP 2: POST /stitch (start job)")
-        r = client.post("/stitch", json={"images": ids})
-        if r.status_code != 202:
-            print(f"  unexpected status {r.status_code}: {r.text}")
-            return 1
-        job_id = r.json()["job_id"]
-        print(f"  202 Accepted -> job_id={job_id}")
-
-        print("STEP 3: poll until done")
-        deadline = time.time() + POLL_TIMEOUT_S
-        job = {"status": "pending"}
-        while time.time() < deadline:
-            job = client.get(f"/jobs/{job_id}").json()
-            print(f"  status={job['status']}")
-            if job["status"] in ("done", "failed"):
-                break
-            time.sleep(1)
-
-        if job["status"] != "done":
-            print(f"  job did not finish cleanly: {job}")
+        print("STEP 2: POST /stitch (returns the image in one response)")
+        r = client.post("/stitch", json={"images": [id1, id2]})
+        print(f"  status={r.status_code} content-type={r.headers.get('content-type')}")
+        if r.status_code != 200:
+            print(f"  error: {r.text}")
             return 1
 
-        print("STEP 4: download result")
-        r = client.get(f"/jobs/{job_id}/result")
-        r.raise_for_status()
         with open(OUTPUT_FILE, "wb") as f:
             f.write(r.content)
-    print(f"  saved -> {OUTPUT_FILE}")
+    print(f"STEP 3: saved result -> {OUTPUT_FILE}")
     return 0
 
 

@@ -19,15 +19,15 @@ from fastapi.responses import HTMLResponse
 from .config import settings
 from .routers import health
 
-# Pick which implementation of the job endpoints to mount.
+# Pick which implementation of the stitch endpoints to mount.
 if os.environ.get("USE_REFERENCE") == "1":
-    from reference import jobs_reference as jobs
+    from reference import stitch_reference as stitch
 else:
-    from .routers import jobs
+    from .routers import stitch
 
 # Make sure the data dirs exist before any request touches them.
 settings.uploads_dir.mkdir(parents=True, exist_ok=True)
-settings.results_dir.mkdir(parents=True, exist_ok=True)
+settings.stage_dir.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title=settings.app_name,
@@ -43,7 +43,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
-app.include_router(jobs.router)
+app.include_router(stitch.router)
 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
@@ -58,14 +58,13 @@ def landing():
 </style></head>
 <body>
   <h1>{settings.app_name}</h1>
-  <p>Upload images, then start a job that stitches them into one panorama-style image.
-     Submit returns a <code>job_id</code>; poll it, then download the result.</p>
+  <p>Upload two images, then call <code>/stitch</code> to combine them. The server stages
+     the images and runs an external compute script via an <b>awaited subprocess</b>, then
+     returns the stitched image in the same response (no polling).</p>
   <ul>
     <li><a href="/docs">Interactive API docs (/docs)</a></li>
     <li><a href="/healthz">Health check (/healthz)</a></li>
   </ul>
   <pre><code>POST /upload         (multipart "file")        -> {{"id": "..."}}
-POST /stitch         {{"images": [id1, id2]}}   -> 202 {{"job_id": "...", "status": "pending"}}
-GET  /jobs/&lt;job_id&gt;                            -> {{"status": "done", ...}}
-GET  /jobs/&lt;job_id&gt;/result                     -> image/jpeg</code></pre>
+POST /stitch         {{"images": [id1, id2]}}   -> image/jpeg (in the same response)</code></pre>
 </body></html>"""

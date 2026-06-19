@@ -1,52 +1,56 @@
 # stitch-service
 
-A small, **real, deployable** FastAPI service that accepts image uploads and stitches them
-into a single image through an **asynchronous job** (submit → poll → download). It's a
-clean demonstration of the pattern behind heavier pipelines: decouple upload from compute,
-return `202 Accepted` with a `job_id`, and let the client poll for the result.
+A small, **real, deployable** FastAPI service that accepts two image uploads and stitches
+them into one image. It replicates the **interview mechanism**: the client makes a single
+request and waits; the server stages the images and runs an external compute script via an
+**awaited subprocess** (`asyncio.create_subprocess_exec`), returning the image in the same
+response — no polling.
 
-> Built over a holiday as a hands-on way to learn how an upload + async-compute API is
-> packaged and deployed. Its bigger sibling, `nerf-service`, runs the same pattern with a
-> real GPU worker (COLMAP + NeRF) on RunPod.
+> Built over a holiday to practice packaging a compute step behind a FastAPI service and
+> deploying it for real. Its sibling, `nerf-service`, takes the same idea to a long-running
+> GPU job with the `202 + poll` pattern.
 
 ## API
 
 ```
 POST /upload         multipart "file"          -> {"id": "..."}
-POST /stitch         {"images": [id1, id2]}    -> 202 {"job_id": "...", "status": "pending"}
-GET  /jobs/{job_id}                            -> {"job_id":..,"status":"pending|running|done|failed"}
-GET  /jobs/{job_id}/result                     -> image/jpeg (409 if not ready)
+POST /stitch         {"images": [id1, id2]}    -> image/jpeg  (returned in the same response)
 GET  /healthz                                  -> {"status": "ok"}
 GET  /docs                                     -> interactive OpenAPI docs
 ```
 
-## Architecture
+## How it works
 
 ```
-client ──upload──▶ API (FastAPI) ──save──▶ data/uploads/<id>.jpg
-client ──stitch──▶ API ──202 job_id──▶ background task ──▶ compute.stitch_images ──▶ data/results/<job>.jpg
-client ──poll────▶ API (job status)
-client ──result──▶ API ──FileResponse──▶ stitched image
+client ──upload──▶ API ──save──▶ data/uploads/<id>.jpg
+client ──stitch──▶ API ──stage──▶ data/stage/s1.jpg, s2.jpg
+                       └─ await asyncio.create_subprocess_exec(python stitch.py) ─▶ data/stage/output.jpg
+                       └─ FileResponse(output.jpg) ─▶ client   (one request, no polling)
 ```
 
-Job state and uploads live in an in-memory store (`app/store.py`). That's intentional for a
-demo; the README's "scaling" note and `nerf-service` show the Redis + object-storage upgrade.
+`stitch.py` is an external, no-arg script (the "heavy compute" stand-in) that reads the
+**hardcoded staged paths** — exactly like the interview's `panorama.py`. The API's job is to
+stage the chosen uploads into those names, run the script without blocking the event loop,
+and stream back the result.
+
+### Why `async def` + `await create_subprocess_exec`
+The heavy compute runs in a **child process**; awaiting it yields to the event loop while it
+runs, so there's no blocked loop **and** no parked worker thread (more scalable than a
+threadpool'd `def` under load). For a seconds-long job, returning the image inline is the
+right call; minute-long jobs want `202 + poll` instead (see `nerf-service`).
 
 ## Run locally
 
 ```bash
 cd stitch-service
-pip install -r requirements-dev.txt          # or: uv run pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt
 
-# the working reference (green out of the box)
-USE_REFERENCE=1 uvicorn app.main:app --reload
-
-# end-to-end client demo (new terminal)
-SERVER_URL=http://127.0.0.1:8000 python client/client.py   # writes client/stitched_output.jpg
+USE_REFERENCE=1 uvicorn app.main:app --reload                 # working reference
+SERVER_URL=http://127.0.0.1:8000 python client/client.py      # writes client/stitched_output.jpg
 ```
 
-There's also a learning **assignment**: implement the endpoints yourself in
-`app/routers/jobs.py` (drop `USE_REFERENCE`). See [`ASSIGNMENT.md`](./ASSIGNMENT.md).
+There's a learning **assignment**: implement the two endpoints yourself in
+`app/routers/stitch.py` (drop `USE_REFERENCE`). See [`ASSIGNMENT.md`](./ASSIGNMENT.md).
 
 ## Tests
 
@@ -57,44 +61,34 @@ PYTHONPATH=. pytest                    # your implementation
 
 ## Deploy to Render
 
-1. Push this folder to its own GitHub repo (see the top-level deploy guide).
-2. In Render: **New → Blueprint**, select the repo. Render reads `render.yaml` and creates
-   the web service (build `pip install -r requirements.txt`, start
-   `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, health check `/healthz`).
-3. It deploys with `USE_REFERENCE=1` so it's green immediately. Once you've implemented your
-   own handlers, set `USE_REFERENCE` to unset/empty in the Render dashboard and redeploy.
-4. Your service is live at `https://stitch-service.onrender.com` (custom domain optional —
-   see the deploy guide).
+Pushed to GitHub and connected to Render via `render.yaml` (Blueprint): build
+`pip install -r requirements.txt`, start `uvicorn app.main:app --host 0.0.0.0 --port $PORT`,
+health check `/healthz`. It ships with `USE_REFERENCE=1` so it's green immediately; once you
+implement your own handlers, blank `USE_REFERENCE` in the Render dashboard and redeploy.
+Auto-deploys on every push to `main`. (Set `STITCH_DELAY` to simulate heavier compute.)
 
-> Note: Render's free plan has an **ephemeral filesystem** and sleeps when idle. Uploaded
-> files and in-memory jobs don't survive a restart — fine for a demo, and exactly the
-> motivation for the object-storage upgrade described above.
-
-## Container (optional)
-
-```bash
-docker build -t stitch-service .
-docker run -p 8000:8000 -e USE_REFERENCE=1 stitch-service
-```
+> Free plan caveats: the service sleeps when idle and the filesystem is ephemeral — fine for
+> a demo. Hardcoded staging also means one stitch at a time per instance; a real system
+> would pass per-request paths or a job id.
 
 ## Layout
 
 ```
 stitch-service/
+  stitch.py            # external no-arg compute script (reads hardcoded staged paths)
   app/
-    main.py            # FastAPI app, landing page, CORS, mounts health + jobs routers
-    config.py          # env-driven settings (pydantic-settings)
-    models.py          # Job + request/response schemas
-    store.py           # in-memory uploads + jobs
-    compute.py         # stitch_images() — Pillow, headless-safe (the "given" compute)
+    main.py            # app, landing, CORS, mounts health + stitch routers
+    config.py          # env settings + staged/script paths
+    models.py          # UploadResponse, StitchRequest
+    store.py           # in-memory uploads (id -> path)
     routers/
       health.py
-      jobs.py          # ← the assignment (you implement)
+      stitch.py        # ← the assignment (you implement)
   reference/
-    jobs_reference.py  # complete fallback (USE_REFERENCE=1)
+    stitch_reference.py  # complete fallback (USE_REFERENCE=1)
   client/
-    client.py          # upload → submit → poll → download
-    sample_images/     # s1.jpg, s2.jpg
-  tests/               # acceptance tests (the grading rubric)
+    client.py          # upload x2 -> /stitch -> save image
+    sample_images/
+  tests/               # acceptance tests
   Dockerfile  render.yaml  requirements*.txt  pytest.ini
 ```

@@ -16,7 +16,8 @@ services:
       # code) once you've implemented app/routers/jobs.py.
       - key: USE_REFERENCE
         value: "1"
-      - key: STITCH_DELAY_SECONDS
+      # Read by stitch.py to simulate heavier compute (seconds). 0 = as fast as possible.
+      - key: STITCH_DELAY
         value: "0"
       - key: CORS_ALLOW_ORIGINS
         value: "*"

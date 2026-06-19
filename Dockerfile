@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 COPY reference ./reference
+COPY stitch.py ./stitch.py
 
 EXPOSE 8000
 ENV PORT=8000

@@ -1,18 +1,5 @@
-"""Pydantic schemas and the in-memory job model.
-
-These are shared by the stub you implement and the reference solution, so the contract
-(field names, status values) is identical either way.
-"""
-from enum import Enum
-
+"""Request/response schemas. No job model anymore - /stitch returns the image directly."""
 from pydantic import BaseModel, Field
-
-
-class JobStatus(str, Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    DONE = "done"
-    FAILED = "failed"
 
 
 class UploadResponse(BaseModel):
@@ -20,24 +7,5 @@ class UploadResponse(BaseModel):
 
 
 class StitchRequest(BaseModel):
-    # Two-or-more image ids returned by /upload. We require >= 2 to stitch.
+    # Exactly two ids (the script stages two hardcoded names). >=2 here; the route enforces ==2.
     images: list[str] = Field(min_length=2)
-
-
-class JobCreatedResponse(BaseModel):
-    job_id: str
-    status: JobStatus
-
-
-class JobStatusResponse(BaseModel):
-    job_id: str
-    status: JobStatus
-    error: str | None = None
-
-
-class Job(BaseModel):
-    id: str
-    status: JobStatus = JobStatus.PENDING
-    image_ids: list[str] = []
-    result_path: str | None = None
-    error: str | None = None
