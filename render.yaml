@@ -6,16 +6,17 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # $APP_MODULE picks which file to serve: solution_app (the working reference) or app
+    # (your code). Switch the env var below once you've implemented app.py.
+    startCommand: uvicorn $APP_MODULE:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
     autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.6"
-      # Flip to "1" to deploy the complete reference instead of your stub. Leave unset (your
-      # code) once you've implemented app/routers/jobs.py.
-      - key: USE_REFERENCE
-        value: "1"
+      # Serve the complete reference until you've implemented app.py, then change to "app".
+      - key: APP_MODULE
+        value: "solution_app"
       # Read by stitch.py to simulate heavier compute (seconds). 0 = as fast as possible.
       - key: STITCH_DELAY
         value: "0"

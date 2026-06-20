@@ -3,7 +3,7 @@ Stitch-service client - upload two images, then one /stitch call that returns th
 directly (the interview's synchronous mechanism; the server awaits an external subprocess).
 
 Local:
-    USE_REFERENCE=1 uv run uvicorn app.main:app --reload
+    uvicorn solution_app:app --reload        # or: uvicorn app:app (your code)
     SERVER_URL=http://127.0.0.1:8000 python client/client.py
 
 Deployed:

@@ -45,26 +45,26 @@ right call; minute-long jobs want `202 + poll` instead (see `nerf-service`).
 cd stitch-service
 pip install -r requirements-dev.txt
 
-USE_REFERENCE=1 uvicorn app.main:app --reload                 # working reference
+uvicorn solution_app:app --reload                             # working reference
 SERVER_URL=http://127.0.0.1:8000 python client/client.py      # writes client/stitched_output.jpg
 ```
 
-There's a learning **assignment**: implement the two endpoints yourself in
-`app/routers/stitch.py` (drop `USE_REFERENCE`). See [`ASSIGNMENT.md`](./ASSIGNMENT.md).
+There's a learning **assignment**: implement the two endpoints yourself in `app.py`
+(then run with `uvicorn app:app`). See [`ASSIGNMENT.md`](./ASSIGNMENT.md).
 
 ## Tests
 
 ```bash
-PYTHONPATH=. USE_REFERENCE=1 pytest    # reference: all green
-PYTHONPATH=. pytest                    # your implementation
+KATA_TARGET=solution_app pytest    # reference: all green
+pytest                             # your implementation (app.py)
 ```
 
 ## Deploy to Render
 
 Pushed to GitHub and connected to Render via `render.yaml` (Blueprint): build
-`pip install -r requirements.txt`, start `uvicorn app.main:app --host 0.0.0.0 --port $PORT`,
-health check `/healthz`. It ships with `USE_REFERENCE=1` so it's green immediately; once you
-implement your own handlers, blank `USE_REFERENCE` in the Render dashboard and redeploy.
+`pip install -r requirements.txt`, start `uvicorn $APP_MODULE:app --host 0.0.0.0 --port $PORT`,
+health check `/healthz`. It ships with `APP_MODULE=solution_app` so it's green immediately;
+once you implement `app.py`, set `APP_MODULE=app` in the Render dashboard and redeploy.
 Auto-deploys on every push to `main`. (Set `STITCH_DELAY` to simulate heavier compute.)
 
 > Free plan caveats: the service sleeps when idle and the filesystem is ephemeral — fine for
@@ -75,20 +75,12 @@ Auto-deploys on every push to `main`. (Set `STITCH_DELAY` to simulate heavier co
 
 ```
 stitch-service/
+  app.py               # ← the whole app + the assignment (you implement /upload + /stitch)
+  solution_app.py      # complete single-file reference (KATA_TARGET=solution_app / APP_MODULE)
   stitch.py            # external no-arg compute script (reads hardcoded staged paths)
-  app/
-    main.py            # app, landing, CORS, mounts health + stitch routers
-    config.py          # env settings + staged/script paths
-    models.py          # UploadResponse, StitchRequest
-    store.py           # in-memory uploads (id -> path)
-    routers/
-      health.py
-      stitch.py        # ← the assignment (you implement)
-  reference/
-    stitch_reference.py  # complete fallback (USE_REFERENCE=1)
   client/
     client.py          # upload x2 -> /stitch -> save image
     sample_images/
-  tests/               # acceptance tests
+  tests/               # acceptance tests (conftest picks app vs solution_app)
   Dockerfile  render.yaml  requirements*.txt  pytest.ini
 ```
