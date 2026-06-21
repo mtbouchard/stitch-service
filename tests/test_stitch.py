@@ -49,9 +49,10 @@ def test_stitch_unknown_id_404(client):
 
 def test_stitch_requires_exactly_two(client):
     id1 = upload(client).json()["id"]
-    # one id -> schema 422 (min_length=2)
-    assert client.post("/stitch", json={"images": [id1]}).status_code == 422
-    # three ids -> passes schema, fails the exactly-two rule -> 400
+    # one id -> passes the schema (images: list[str]), fails the exactly-two rule -> 400
+    # (matches the interview contract: count is enforced in code, not by the schema)
+    assert client.post("/stitch", json={"images": [id1]}).status_code == 400
+    # three ids -> also fails the exactly-two rule -> 400
     id2 = upload(client).json()["id"]
     id3 = upload(client).json()["id"]
     assert client.post("/stitch", json={"images": [id1, id2, id3]}).status_code == 400

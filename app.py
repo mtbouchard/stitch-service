@@ -21,7 +21,7 @@ from uuid import uuid4
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # --- paths (anchored to this file, so cwd never matters) ---------------------
 BASE_DIR = Path(__file__).resolve().parent
@@ -36,15 +36,6 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 STAGE_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# --- models ------------------------------------------------------------------
-class UploadResponse(BaseModel):
-    id: str
-
-
-class StitchRequest(BaseModel):
-    images: list[str] = Field(min_length=2)
 
 
 # --- in-memory store (id -> saved file path) ---------------------------------
@@ -69,6 +60,10 @@ app.add_middleware(
 @app.get("/healthz")
 def healthz():
     return {"status": "ok"}
+
+
+class StitchRequest(BaseModel):
+    images: list[str]
 
 
 # =============================================================================
@@ -97,7 +92,45 @@ def healthz():
 # compute in a child process without parking a worker thread or blocking the loop.
 
 # Your code here.
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    if file.content_type != "image/jpeg": 
+        raise HTTPException(status_code=400, 
+        detail="Please upload a JPEG image")
+    image_id = uuid4().hex[:8]
+    path = os.path.join(UPLOADS_DIR, f"{image_id}.jpg")
+    with open(path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    uploads[image_id] = path
+    return {"id": image_id}
 
+@app.post("/stitch")
+async def stitch_images(req: StitchRequest):
+    if len(req.images) != 2:
+        raise HTTPException(status_code=400,
+        detail="We can only stitch two images at a time currently")
+    try:
+        src1 = uploads[req.images[0]]
+        src2 = uploads[req.images[1]]
+    except KeyError as exc:
+        raise HTTPException(status_code=404,
+        detail=f"Can't find image with id: {exc.args[0]}")
+    shutil.copyfile(src1, STAGE1_PATH)
+    shutil.copyfile(src2, STAGE2_PATH)
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, SCRIPT_PATH,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise HTTPException(status_code=500,
+        detail=f"Stitching failed: {stderr.decode().strip()}")
+    if not os.path.exists(OUTPUT_PATH):
+        raise HTTPException(status_code=500,
+        detail="Stitching failed: no output image produced")
+    return FileResponse(OUTPUT_PATH, media_type="image/jpeg")
+ 
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def landing():

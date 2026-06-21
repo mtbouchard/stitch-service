@@ -19,7 +19,7 @@ from uuid import uuid4
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # --- paths (anchored to this file, so cwd never matters) ---------------------
 BASE_DIR = Path(__file__).resolve().parent
@@ -42,7 +42,7 @@ class UploadResponse(BaseModel):
 
 
 class StitchRequest(BaseModel):
-    images: list[str] = Field(min_length=2)
+    images: list[str]
 
 
 # --- in-memory store (id -> saved file path) ---------------------------------
