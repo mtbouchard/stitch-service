@@ -6,4 +6,5 @@ venv/
 .env
 data/
 client/stitched_output.jpg
+ASSIGNMENT.md
 .DS_Store

@@ -1,4 +1,4 @@
-"""Acceptance tests = the hidden grading rubric for the assignment."""
+"""Acceptance tests for the stitch API."""
 import io
 
 from PIL import Image
@@ -50,7 +50,7 @@ def test_stitch_unknown_id_404(client):
 def test_stitch_requires_exactly_two(client):
     id1 = upload(client).json()["id"]
     # one id -> passes the schema (images: list[str]), fails the exactly-two rule -> 400
-    # (matches the interview contract: count is enforced in code, not by the schema)
+    # (count is enforced in code, not by the schema)
     assert client.post("/stitch", json={"images": [id1]}).status_code == 400
     # three ids -> also fails the exactly-two rule -> 400
     id2 = upload(client).json()["id"]

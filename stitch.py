@@ -1,8 +1,7 @@
 """
-External compute script - the "heavy compute" stand-in (analog of the interview's
-panorama.py). It takes NO arguments and reads HARDCODED staged paths, exactly like the
-interview: the API must stage the two chosen images into data/stage/s1.jpg and
-data/stage/s2.jpg before running this, and reads the result from data/stage/output.jpg.
+External compute script. It takes NO arguments and reads HARDCODED staged paths: the API
+stages the two chosen images into data/stage/s1.jpg and data/stage/s2.jpg before running
+this, then reads the result from data/stage/output.jpg.
 
 Pillow only (headless-safe). Paths are anchored to __file__ so cwd never matters.
 Set STITCH_DELAY (seconds) to simulate heavier compute.
@@ -30,7 +29,7 @@ def main() -> int:
 
     try:
         if DELAY:
-            time.sleep(DELAY)  # stand in for heavy compute
+            time.sleep(DELAY)  # simulate heavier compute
 
         im1 = Image.open(IMG1_PATH).convert("RGB")
         im2 = Image.open(IMG2_PATH).convert("RGB")

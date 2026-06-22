@@ -1,15 +1,14 @@
 """
-stitch-service — single-file app (the one YOU edit).
+stitch-service — a small FastAPI service that stitches two uploaded images into one.
 
-Everything you need is right here: the models, the in-memory `uploads` dict, the staged
-paths, and the FastAPI app. `/healthz` and `/` are done for you. You implement the two
-endpoints marked TODO below. See ASSIGNMENT.md for the brief; solution_app.py is the full
-reference if you get stuck.
+Upload two images, then call /stitch: the server stages them and runs an external compute
+script (stitch.py) via an awaited subprocess, returning the stitched image in the same
+response. solution_app.py is an equivalent reference implementation.
 
 Run:
-    uvicorn app:app --reload          # your code
-    pytest                            # grade yourself (red until implemented)
-    uvicorn solution_app:app --reload # the working reference
+    uvicorn app:app --reload
+    pytest
+    uvicorn solution_app:app --reload
 """
 import asyncio
 import os
@@ -66,32 +65,8 @@ class StitchRequest(BaseModel):
     images: list[str]
 
 
-# =============================================================================
-# YOUR ASSIGNMENT — implement the two endpoints below.
-# =============================================================================
-#
-# POST /upload   (multipart "file")
-#   - 400 if not an image (check file.content_type starts with "image/")
-#   - 413 if larger than MAX_UPLOAD_BYTES
-#   - save under UPLOADS_DIR as "<id>.jpg", record uploads[id] = path
-#   - return UploadResponse(id=...)
-#
-# POST /stitch   body StitchRequest {"images": [id1, id2]}   -> returns image/jpeg
-#   - require exactly two ids (400 otherwise); resolve both in uploads (404 if unknown)
-#   - STAGE: copy them to STAGE1_PATH and STAGE2_PATH (stitch.py reads those names)
-#   - run the script WITHOUT blocking the event loop:
-#         proc = await asyncio.create_subprocess_exec(
-#             sys.executable, str(SCRIPT_PATH),
-#             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-#         )
-#         stdout, stderr = await proc.communicate()
-#   - if proc.returncode != 0: raise 500 with stderr.decode()
-#   - return FileResponse(str(OUTPUT_PATH), media_type="image/jpeg")
-#
-# /stitch is `async def` on purpose: awaiting create_subprocess_exec runs the heavy
-# compute in a child process without parking a worker thread or blocking the loop.
-
-# Your code here.
+# /stitch is `async def` on purpose: awaiting create_subprocess_exec runs the compute in a
+# child process without parking a worker thread or blocking the event loop.
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     if file.content_type != "image/jpeg": 

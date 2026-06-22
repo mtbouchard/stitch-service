@@ -1,6 +1,6 @@
 """
 Stitch-service client - upload two images, then one /stitch call that returns the image
-directly (the interview's synchronous mechanism; the server awaits an external subprocess).
+directly in the same response (the server awaits an external subprocess).
 
 Local:
     uvicorn solution_app:app --reload        # or: uvicorn app:app (your code)

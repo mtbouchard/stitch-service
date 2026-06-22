@@ -1,14 +1,12 @@
 # stitch-service
 
-A small, **real, deployable** FastAPI service that accepts two image uploads and stitches
-them into one image. It replicates the **interview mechanism**: the client makes a single
-request and waits; the server stages the images and runs an external compute script via an
-**awaited subprocess** (`asyncio.create_subprocess_exec`), returning the image in the same
-response — no polling.
+A small, deployable FastAPI service that accepts two image uploads and stitches them into
+one. The client makes a single request and waits: the server stages the images and runs an
+external compute script via an **awaited subprocess** (`asyncio.create_subprocess_exec`),
+returning the result in the same response.
 
-> Built over a holiday to practice packaging a compute step behind a FastAPI service and
-> deploying it for real. Its sibling, `nerf-service`, takes the same idea to a long-running
-> GPU job with the `202 + poll` pattern.
+Its sibling, `nerf-service`, takes the same idea to a long-running job with the `202 + poll`
+pattern.
 
 ## API
 
@@ -28,16 +26,14 @@ client ──stitch──▶ API ──stage──▶ data/stage/s1.jpg, s2.jpg
                        └─ FileResponse(output.jpg) ─▶ client   (one request, no polling)
 ```
 
-`stitch.py` is an external, no-arg script (the "heavy compute" stand-in) that reads the
-**hardcoded staged paths** — exactly like the interview's `panorama.py`. The API's job is to
-stage the chosen uploads into those names, run the script without blocking the event loop,
-and stream back the result.
+`stitch.py` is an external, no-arg script that reads hardcoded staged paths; the API stages
+the chosen uploads into those names, runs the script without blocking the event loop, and
+streams back the result.
 
 ### Why `async def` + `await create_subprocess_exec`
-The heavy compute runs in a **child process**; awaiting it yields to the event loop while it
-runs, so there's no blocked loop **and** no parked worker thread (more scalable than a
-threadpool'd `def` under load). For a seconds-long job, returning the image inline is the
-right call; minute-long jobs want `202 + poll` instead (see `nerf-service`).
+The compute runs in a child process; awaiting it yields to the event loop while it runs, so
+there's no blocked loop and no parked worker thread. For a seconds-long job, returning the
+image inline is the right call; minute-long jobs want `202 + poll` instead (see `nerf-service`).
 
 ## Run locally
 
@@ -45,42 +41,40 @@ right call; minute-long jobs want `202 + poll` instead (see `nerf-service`).
 cd stitch-service
 pip install -r requirements-dev.txt
 
-uvicorn solution_app:app --reload                             # working reference
+uvicorn app:app --reload
 SERVER_URL=http://127.0.0.1:8000 python client/client.py      # writes client/stitched_output.jpg
 ```
 
-There's a learning **assignment**: implement the two endpoints yourself in `app.py`
-(then run with `uvicorn app:app`). See [`ASSIGNMENT.md`](./ASSIGNMENT.md).
+`solution_app.py` is an equivalent reference implementation.
 
 ## Tests
 
 ```bash
-KATA_TARGET=solution_app pytest    # reference: all green
-pytest                             # your implementation (app.py)
+pytest                             # app.py
+APP_MODULE=solution_app pytest     # the reference implementation
 ```
 
 ## Deploy to Render
 
-Pushed to GitHub and connected to Render via `render.yaml` (Blueprint): build
-`pip install -r requirements.txt`, start `uvicorn $APP_MODULE:app --host 0.0.0.0 --port $PORT`,
-health check `/healthz`. It ships with `APP_MODULE=solution_app` so it's green immediately;
-once you implement `app.py`, set `APP_MODULE=app` in the Render dashboard and redeploy.
-Auto-deploys on every push to `main`. (Set `STITCH_DELAY` to simulate heavier compute.)
+Connected via `render.yaml` (Blueprint): build `pip install -r requirements.txt`, start
+`uvicorn $APP_MODULE:app --host 0.0.0.0 --port $PORT`, health check `/healthz`. `APP_MODULE`
+selects which module to serve (`app` or `solution_app`). Auto-deploys on every push to `main`.
+(Set `STITCH_DELAY` to simulate heavier compute.)
 
-> Free plan caveats: the service sleeps when idle and the filesystem is ephemeral — fine for
-> a demo. Hardcoded staging also means one stitch at a time per instance; a real system
-> would pass per-request paths or a job id.
+> Free-tier caveats: the service sleeps when idle and the filesystem is ephemeral — fine for a
+> demo. Hardcoded staging means one stitch at a time per instance; a real system would pass
+> per-request paths or a job id.
 
 ## Layout
 
 ```
 stitch-service/
-  app.py               # ← the whole app + the assignment (you implement /upload + /stitch)
-  solution_app.py      # complete single-file reference (KATA_TARGET=solution_app / APP_MODULE)
+  app.py               # the service (/upload + /stitch)
+  solution_app.py      # equivalent reference implementation
   stitch.py            # external no-arg compute script (reads hardcoded staged paths)
   client/
     client.py          # upload x2 -> /stitch -> save image
     sample_images/
-  tests/               # acceptance tests (conftest picks app vs solution_app)
+  tests/               # acceptance tests
   Dockerfile  render.yaml  requirements*.txt  pytest.ini
 ```

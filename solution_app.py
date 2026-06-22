@@ -1,13 +1,12 @@
 """
-stitch-service — complete single-file reference (the fallback).
+stitch-service — reference implementation (equivalent to app.py).
 
-Identical scaffolding to app.py, but the two endpoints are implemented. Run it any time:
     uvicorn solution_app:app --reload
-    KATA_TARGET=solution_app pytest        # all green
+    APP_MODULE=solution_app pytest        # all green
 
-Key idea: `async def` + `await asyncio.create_subprocess_exec(...)` runs the heavy compute
-in a child process and yields to the event loop while it runs — no blocked loop, no parked
-worker thread. The image comes back in the same response (no polling).
+Key idea: `async def` + `await asyncio.create_subprocess_exec(...)` runs the compute in a
+child process and yields to the event loop while it runs — no blocked loop, no parked worker
+thread. The image comes back in the same response (no polling).
 """
 import asyncio
 import os
